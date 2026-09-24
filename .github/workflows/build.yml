@@ -1,0 +1,261 @@
+# Build the GNAT toolchain archives for every platform, then verify each
+# archive on machines that differ from the one it was built on.
+#
+# Triggered directly (dispatch, PRs and pushes touching the build inputs) and
+# reused by release.yml through workflow_call.  Every third-party action is
+# pinned to a commit; every runner label is an explicit OS version.
+
+name: Build toolchains
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: >-
+          Space-separated subset of: linux-x86_64 linux-aarch64 darwin-x86_64
+          darwin-aarch64 windows-x86_64 (empty = all)
+        type: string
+        default: ""
+  workflow_call:
+    inputs:
+      platforms:
+        type: string
+        default: ""
+  pull_request:
+    paths:
+      - versions.env
+      - scripts/**
+      - test/**
+      - .github/workflows/build.yml
+  push:
+    branches: [main]
+    paths:
+      - versions.env
+      - scripts/**
+      - test/**
+      - .github/workflows/build.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow_ref }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PA_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+
+jobs:
+  pins:
+    name: Resolve pins and matrix
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.env.outputs.PA_RELEASE_VERSION }}
+      tag: ${{ steps.env.outputs.PA_RELEASE_TAG }}
+      linux: ${{ steps.matrix.outputs.linux }}
+      darwin: ${{ steps.matrix.outputs.darwin }}
+      windows: ${{ steps.matrix.outputs.windows }}
+      test_native: ${{ steps.matrix.outputs.test_native }}
+      test_container: ${{ steps.matrix.outputs.test_container }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - id: env
+        run: scripts/env.sh --github >> "$GITHUB_OUTPUT"
+      - id: matrix
+        run: scripts/ci/matrix.sh "${{ inputs.platforms }}" >> "$GITHUB_OUTPUT"
+      - run: |
+          echo "GCC ${{ steps.env.outputs.GCC_VERSION }} release ${{ steps.env.outputs.PKG_RELEASE }} -> ${{ steps.env.outputs.PA_RELEASE_TAG }}"
+          cat "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  linux:
+    name: Build linux-${{ matrix.arch }}
+    needs: pins
+    if: needs.pins.outputs.linux != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.pins.outputs.linux) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/.ghcup
+          docker image prune -af >/dev/null 2>&1 || true
+          df -h /
+
+      - name: Build inside pinned container
+        env:
+          PA_WORK: ${{ runner.temp }}/pa
+        run: scripts/linux/docker-build.sh
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: gnat-${{ matrix.arch }}-linux
+          path: ${{ runner.temp }}/pa/out/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  darwin:
+    name: Build darwin-${{ matrix.arch }}
+    needs: pins
+    if: needs.pins.outputs.darwin != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.pins.outputs.darwin) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Toolchain info
+        run: |
+          sw_vers
+          xcode-select -p
+          xcrun --show-sdk-path
+          xcrun --show-sdk-version
+          sysctl -n hw.ncpu
+
+      - name: Build
+        env:
+          PA_WORK: ${{ runner.temp }}/pa
+        run: scripts/build-all.sh
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: gnat-${{ matrix.arch }}-darwin
+          path: ${{ runner.temp }}/pa/out/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  windows:
+    name: Build windows-${{ matrix.arch }}
+    needs: pins
+    if: needs.pins.outputs.windows != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.pins.outputs.windows) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 350
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      CONFIG_SHELL: /bin/bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      # msys2 only supplies the POSIX build environment (bash, make, bison,
+      # python for the archive writer).  The compiler used is the pinned
+      # bootstrap GNAT; no msys2 mingw-w64 toolchain is installed.
+      - uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            base-devel
+            git
+            python
+            tar
+            xz
+            bzip2
+            zip
+
+      # GCC's prefix must read the same as a POSIX path and as a Windows path
+      # for its run-time relocation to work; mounting C:/pa at /pa does that.
+      - name: Prepare /pa mount
+        run: |
+          mkdir -p /c/pa
+          echo 'C:/pa /pa ntfs binary,noacl,posix=0 0 0' >> /etc/fstab
+          mkdir -p /pa || true
+          mount C:/pa /pa || true
+          mount | grep ' /pa ' || { echo "mount failed"; exit 1; }
+          df -h /pa
+
+      - name: Build
+        run: |
+          mount C:/pa /pa 2>/dev/null || true
+          export PA_WORK=/pa/work PA_OUT=/pa/out
+          bash "$(cygpath -u "$GITHUB_WORKSPACE")/scripts/build-all.sh"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: gnat-${{ matrix.arch }}-windows
+          path: C:/pa/out/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Each archive is unpacked into a fresh temporary directory on a machine
+  # that is not the build machine and checked with scripts/check.sh.
+  # ---------------------------------------------------------------------------
+  test-native:
+    name: Test ${{ matrix.platform }} on ${{ matrix.label }}
+    needs: [pins, linux, darwin, windows]
+    if: >-
+      !cancelled()
+      && needs.pins.outputs.test_native != '[]'
+      && needs.linux.result != 'failure'
+      && needs.darwin.result != 'failure'
+      && needs.windows.result != 'failure'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.pins.outputs.test_native) }}
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.experimental == true }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist
+      - name: Host info
+        shell: bash
+        run: |
+          uname -a
+          ls -la dist
+      - name: Check archive
+        shell: bash
+        run: scripts/ci/test-archive.sh dist/gnat-*.tar.gz
+
+  test-container:
+    name: Test ${{ matrix.platform }} in ${{ matrix.label }}
+    needs: [pins, linux]
+    if: >-
+      !cancelled()
+      && needs.pins.outputs.test_container != '[]'
+      && needs.linux.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.pins.outputs.test_container) }}
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ${{ matrix.image }}
+    timeout-minutes: 30
+    steps:
+      - name: Install libc development files
+        run: ${{ matrix.setup }}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist
+      - name: Host info
+        run: |
+          uname -a
+          ldd --version | head -1
+      - name: Check archive
+        run: bash scripts/ci/test-archive.sh dist/gnat-*.tar.gz
