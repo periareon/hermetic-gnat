@@ -1,0 +1,93 @@
+# Publish a release from a tag.
+#
+#   git tag gnat-16.1.0-1 && git push origin gnat-16.1.0-1
+#
+# The tag must match versions.env exactly (gnat-${GCC_VERSION}-${PKG_RELEASE}).
+# All platforms are built and verified by build.yml; only if every archive
+# passes its checks is the GitHub release created, with sha256 sidecars, a
+# SHA256SUMS file, the build manifests, and release notes that include the
+# ready-to-paste rules_ada versions.bzl entry.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "gnat-*"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-tag:
+    name: Verify tag matches versions.env
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          expected="$(scripts/env.sh PA_RELEASE_TAG)"
+          if [ "${GITHUB_REF_NAME}" != "${expected}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match versions.env (${expected})"
+            exit 1
+          fi
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "::error::release ${GITHUB_REF_NAME} already exists; bump PKG_RELEASE"
+            exit 1
+          fi
+          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=$(scripts/env.sh PA_RELEASE_VERSION)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build and verify
+    needs: verify-tag
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+
+  publish:
+    name: Create GitHub release
+    needs: [verify-tag, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: gnat-*
+          path: dist
+          merge-multiple: true
+
+      - name: Assemble release
+        run: |
+          set -euo pipefail
+          cd dist
+          ls -la
+          # Every platform must be present: a partial release is worse than none.
+          for p in x86_64-linux aarch64-linux x86_64-darwin aarch64-darwin x86_64-windows64; do
+            f="gnat-${p}-${{ needs.verify-tag.outputs.version }}.tar.gz"
+            [ -f "${f}" ] || { echo "::error::missing ${f}"; exit 1; }
+            [ -f "${f}.sha256" ] || { echo "::error::missing ${f}.sha256"; exit 1; }
+            sha256sum -c "${f}.sha256"
+          done
+          cat ./*.tar.gz.sha256 > SHA256SUMS
+          cd ..
+          scripts/ci/release-notes.sh dist "${{ needs.verify-tag.outputs.tag }}" > notes.md
+          cat notes.md
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ needs.verify-tag.outputs.tag }}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "GNAT ${{ needs.verify-tag.outputs.version }}" \
+            --notes-file notes.md \
+            --verify-tag \
+            dist/*.tar.gz dist/*.tar.gz.sha256 dist/*.manifest.json dist/SHA256SUMS

@@ -1,0 +1,3 @@
+sum = 385, first = 1, last = 100
+words = 9, the = 3
+brown dog end fox jumps lazy over quick the 

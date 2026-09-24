@@ -1,0 +1,7 @@
+/work/
+/out/
+*.tar.gz
+*.tar.gz.sha256
+*.part
+__pycache__/
+.DS_Store
