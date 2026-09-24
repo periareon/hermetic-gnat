@@ -1,0 +1,157 @@
+# Cut a release.
+#
+# Two ways to start one:
+#
+#   1. Actions -> Release -> "Run workflow", pick the GCC version.  The tag
+#      (gnat-<gcc>-<PKG_RELEASE>, from versions/<gcc>.env) is created only
+#      after every platform has built and passed its checks, together with
+#      the GitHub release.  Nothing to clean up if a build fails.
+#
+#   2. Push the tag yourself:  git tag gnat-16.1.0-1 && git push origin gnat-16.1.0-1
+#      The tag selects the pin file and must agree with its PKG_RELEASE.
+#
+# Any version with a pin file can be released from main at any time; after a
+# recipe change, bump PKG_RELEASE in each version and release each one.
+# Every release carries the archives, sha256 sidecars, a SHA256SUMS file,
+# the build manifests, and notes with the ready-to-paste rules_ada
+# versions.bzl entry.
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      gcc_version:
+        description: GCC version to release; one of versions/<gcc>.env (empty = versions/DEFAULT)
+        type: string
+        default: ""
+  push:
+    tags:
+      - "gnat-*"
+
+permissions:
+  contents: read
+
+# One release at a time.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve version and tag
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      version: ${{ steps.check.outputs.version }}
+      gcc_version: ${{ steps.check.outputs.gcc_version }}
+      tag_exists: ${{ steps.check.outputs.tag_exists }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_GCC_VERSION: ${{ inputs.gcc_version }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = push ]; then
+            # gnat-<gcc>-<release>  ->  versions/<gcc>.env must exist and agree
+            case "${GITHUB_REF_NAME}" in
+              gnat-[0-9]*.[0-9]*.[0-9]*-[0-9]*) ;;
+              *) echo "::error::tag ${GITHUB_REF_NAME} is not of the form gnat-<gcc>-<release>"; exit 1 ;;
+            esac
+            rest="${GITHUB_REF_NAME#gnat-}"
+            gcc_version="${rest%-*}"
+            tag_exists=true
+          else
+            gcc_version="${INPUT_GCC_VERSION:-$(tr -d '[:space:]' < versions/DEFAULT)}"
+            tag_exists=false
+          fi
+          if [ ! -f "versions/${gcc_version}.env" ]; then
+            echo "::error::no versions/${gcc_version}.env (have: $(scripts/env.sh --list | tr '\n' ' '))"
+            exit 1
+          fi
+          export PA_GCC_VERSION="${gcc_version}"
+          tag="$(scripts/env.sh PA_RELEASE_TAG)"
+          if [ "${tag_exists}" = true ] && [ "${GITHUB_REF_NAME}" != "${tag}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match versions/${gcc_version}.env (${tag}); bump PKG_RELEASE there"
+            exit 1
+          fi
+          if gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "::error::release ${tag} already exists; bump PKG_RELEASE in versions/${gcc_version}.env"
+            exit 1
+          fi
+          if [ "${tag_exists}" = false ] && git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "::error::tag ${tag} already exists without a release; delete it or bump PKG_RELEASE"
+            exit 1
+          fi
+          {
+            echo "tag=${tag}"
+            echo "version=$(scripts/env.sh PA_RELEASE_VERSION)"
+            echo "gcc_version=${gcc_version}"
+            echo "tag_exists=${tag_exists}"
+          } >> "$GITHUB_OUTPUT"
+          echo "releasing ${tag} from ${GITHUB_SHA}"
+
+  build:
+    name: Build and verify
+    needs: resolve
+    uses: ./.github/workflows/build.yml
+    with:
+      gcc_version: ${{ needs.resolve.outputs.gcc_version }}
+    permissions:
+      contents: read
+
+  publish:
+    name: Create GitHub release
+    needs: [resolve, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: gnat-*
+          path: dist
+          merge-multiple: true
+
+      - name: Assemble release
+        env:
+          PA_GCC_VERSION: ${{ needs.resolve.outputs.gcc_version }}
+        run: |
+          set -euo pipefail
+          cd dist
+          ls -la
+          # Every platform must be present: a partial release is worse than none.
+          for p in x86_64-linux aarch64-linux x86_64-darwin aarch64-darwin x86_64-windows64; do
+            f="gnat-${p}-${{ needs.resolve.outputs.version }}.tar.gz"
+            [ -f "${f}" ] || { echo "::error::missing ${f}"; exit 1; }
+            [ -f "${f}.sha256" ] || { echo "::error::missing ${f}.sha256"; exit 1; }
+            sha256sum -c "${f}.sha256"
+          done
+          cat ./*.tar.gz.sha256 > SHA256SUMS
+          cd ..
+          scripts/ci/release-notes.sh dist "${{ needs.resolve.outputs.tag }}" > notes.md
+          cat notes.md
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          TAG_EXISTS: ${{ needs.resolve.outputs.tag_exists }}
+        run: |
+          set -euo pipefail
+          if [ "${TAG_EXISTS}" = true ]; then
+            # Tag-push trigger: the tag is already there and must be the one we built.
+            extra=(--verify-tag)
+          else
+            # Manual trigger: create the tag now, on the exact commit that was built.
+            extra=(--target "${GITHUB_SHA}")
+          fi
+          gh release create "${TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "GNAT ${{ needs.resolve.outputs.version }}" \
+            --notes-file notes.md \
+            "${extra[@]}" \
+            dist/*.tar.gz dist/*.tar.gz.sha256 dist/*.manifest.json dist/SHA256SUMS

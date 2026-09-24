@@ -1,0 +1,11 @@
+# Keep the commit-pinned actions current.  Toolchain sources are pinned in
+# versions.env and are bumped by hand on purpose.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

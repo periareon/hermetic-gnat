@@ -1,0 +1,3 @@
+add = 42
+greeting = hello from C
+length = 8 8
