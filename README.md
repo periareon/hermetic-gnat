@@ -90,7 +90,7 @@ minimum. This repository builds the same GCC sources with three goals:
 | Working compiler and runtime | seven programs under [test/](test/) covering separate compilation, tasking, exceptions, containers, Ada 2022, numerics and C interop are built twice (the `rules_ada` way and with `gnatmake`) and their output compared |
 | Reproducible archive bytes | `mktar.py` writes sorted entries, `SOURCE_DATE_EPOCH` timestamps, root ownership and normalised modes; GCC's 3-stage bootstrap compares stage 2 and 3 |
 | Bootstrap compiler leaves no trace | native builds use the standard 3-stage bootstrap, so the installed compiler was compiled by itself |
-| Provenance | `share/portable-ada/manifest.json` inside every archive lists every source URL, checksum and configure flag |
+| Provenance | `share/hermetic-gnat/manifest.json` inside every archive lists every source URL, checksum and configure flag |
 
 Things that are deliberately *not* hermetic, because a native toolchain
 cannot be: the target C library and its headers (glibc, the macOS SDK), and
@@ -237,7 +237,7 @@ gnat-<arch>-<os>-<ver>/
   <triple>/bin, <triple>/lib   binutils' own copies and ld scripts
   include/, <triple>/include   mingw-w64 headers (Windows)
   share/licenses/              GPL, GCC Runtime Library Exception, LGPL, ...
-  share/portable-ada/manifest.json
+  share/hermetic-gnat/manifest.json
 ```
 
 ## License

@@ -32,8 +32,8 @@ TC="$(cd "$1" && pwd -P)" || pa_die "no such directory: $1"
 
 # Check against the pins of the version the archive says it is, unless the
 # caller already chose one.
-if [ -z "${PA_GCC_VERSION:-}" ] && [ -f "${TC}/share/portable-ada/manifest.json" ]; then
-    PA_GCC_VERSION="$(grep -o '"gcc_version": *"[^"]*"' "${TC}/share/portable-ada/manifest.json" | sed 's/.*: *"\(.*\)"/\1/')"
+if [ -z "${PA_GCC_VERSION:-}" ] && [ -f "${TC}/share/hermetic-gnat/manifest.json" ]; then
+    PA_GCC_VERSION="$(grep -o '"gcc_version": *"[^"]*"' "${TC}/share/hermetic-gnat/manifest.json" | sed 's/.*: *"\(.*\)"/\1/')"
     export PA_GCC_VERSION
 fi
 pa_load_versions
@@ -70,7 +70,7 @@ is_elf()   { [ "$(magic "$1")" = 7f454c46 ]; }
 is_macho() { case "$(magic "$1")" in cffaedfe|cefaedfe|cafebabe|feedfacf|feedface) return 0 ;; *) return 1 ;; esac; }
 is_pe()    { case "$(magic "$1")" in 4d5a*) return 0 ;; *) return 1 ;; esac; }
 
-manifest="${TC}/share/portable-ada/manifest.json"
+manifest="${TC}/share/hermetic-gnat/manifest.json"
 manifest_get() { grep -o "\"$1\": *\"[^\"]*\"" "${manifest}" 2>/dev/null | head -1 | sed 's/.*: *"\(.*\)"/\1/'; }
 
 # Architecture of the archive, not of the host (Windows-on-ARM runs the

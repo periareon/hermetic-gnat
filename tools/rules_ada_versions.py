@@ -7,7 +7,7 @@ Reads the ``*.tar.gz.sha256`` sidecars produced by scripts/package.sh (or a
 consumed before (or instead of) teaching rules_ada's updater about this
 repository.
 
-    tools/rules_ada_versions.py --repo OWNER/portable-ada dist/
+    tools/rules_ada_versions.py --repo OWNER/hermetic-gnat dist/
 
 Asset names follow the GNAT-FSF-builds convention that rules_ada already
 parses: gnat-<arch>-<linux|darwin|windows64>-<gcc>-<release>.tar.gz
