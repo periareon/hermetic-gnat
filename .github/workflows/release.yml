@@ -1,33 +1,35 @@
-# Cut a release.
+# Cut a hermetic-gnat release.
+#
+# A release is a version of *this repository* (the recipe): it contains one
+# archive per platform for every GCC version in versions/, all built by the
+# same scripts at the same commit.  A recipe fix is therefore one release,
+# and rules_ada tracks one hermetic-gnat release at a time.
 #
 # Two ways to start one:
 #
-#   1. Actions -> Release -> "Run workflow", pick the GCC version.  The tag
-#      (gnat-<gcc>-<PKG_RELEASE>, from versions/<gcc>.env) is created only
-#      after every platform has built and passed its checks, together with
-#      the GitHub release.  Nothing to clean up if a build fails.
+#   1. Actions -> Release -> "Run workflow", enter the version (e.g. 1.2.0).
+#      The tag v1.2.0 is created only after every archive has built and
+#      passed its checks, together with the GitHub release.  Nothing to
+#      clean up if a build fails.
 #
-#   2. Push the tag yourself:  git tag gnat-16.1.0-1 && git push origin gnat-16.1.0-1
-#      The tag selects the pin file and must agree with its PKG_RELEASE.
+#   2. Push the tag yourself:  git tag v1.2.0 && git push origin v1.2.0
 #
-# Any version with a pin file can be released from main at any time; after a
-# recipe change, bump PKG_RELEASE in each version and release each one.
-# Every release carries the archives, sha256 sidecars, a SHA256SUMS file,
-# the build manifests, and notes with the ready-to-paste rules_ada
-# versions.bzl entry.
+# Every release carries the archives (gnat-<arch>-<os>-<gcc>.tar.gz), their
+# sha256 sidecars, a SHA256SUMS file, the build manifests, and notes with
+# the ready-to-paste rules_ada versions.bzl content.
 
 name: Release
 
 on:
   workflow_dispatch:
     inputs:
-      gcc_version:
-        description: GCC version to release; one of versions/<gcc>.env (empty = versions/DEFAULT)
+      version:
+        description: hermetic-gnat version to release, without the leading v (e.g. 1.2.0)
         type: string
-        default: ""
+        required: true
   push:
     tags:
-      - "gnat-*"
+      - "v[0-9]*"
 
 permissions:
   contents: read
@@ -42,9 +44,8 @@ jobs:
     name: Resolve version and tag
     runs-on: ubuntu-24.04
     outputs:
-      tag: ${{ steps.check.outputs.tag }}
       version: ${{ steps.check.outputs.version }}
-      gcc_version: ${{ steps.check.outputs.gcc_version }}
+      tag: ${{ steps.check.outputs.tag }}
       tag_exists: ${{ steps.check.outputs.tag_exists }}
       skip: ${{ steps.check.outputs.skip }}
     steps:
@@ -52,32 +53,21 @@ jobs:
       - id: check
         env:
           GH_TOKEN: ${{ github.token }}
-          INPUT_GCC_VERSION: ${{ inputs.gcc_version }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           if [ "${GITHUB_EVENT_NAME}" = push ]; then
-            # gnat-<gcc>-<release>  ->  versions/<gcc>.env must exist and agree
-            case "${GITHUB_REF_NAME}" in
-              gnat-[0-9]*.[0-9]*.[0-9]*-[0-9]*) ;;
-              *) echo "::error::tag ${GITHUB_REF_NAME} is not of the form gnat-<gcc>-<release>"; exit 1 ;;
-            esac
-            rest="${GITHUB_REF_NAME#gnat-}"
-            gcc_version="${rest%-*}"
+            version="${GITHUB_REF_NAME#v}"
             tag_exists=true
           else
-            gcc_version="${INPUT_GCC_VERSION:-$(tr -d '[:space:]' < versions/DEFAULT)}"
+            version="${INPUT_VERSION#v}"
             tag_exists=false
           fi
-          if [ ! -f "versions/${gcc_version}.env" ]; then
-            echo "::error::no versions/${gcc_version}.env (have: $(scripts/env.sh --list | tr '\n' ' '))"
-            exit 1
-          fi
-          export PA_GCC_VERSION="${gcc_version}"
-          tag="$(scripts/env.sh PA_RELEASE_TAG)"
-          if [ "${tag_exists}" = true ] && [ "${GITHUB_REF_NAME}" != "${tag}" ]; then
-            echo "::error::tag ${GITHUB_REF_NAME} does not match versions/${gcc_version}.env (${tag}); bump PKG_RELEASE there"
-            exit 1
-          fi
+          case "${version}" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::version '${version}' is not MAJOR.MINOR.PATCH"; exit 1 ;;
+          esac
+          tag="v${version}"
           if gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             if [ "${tag_exists}" = true ]; then
               # A manual run that publishes with a personal token creates the
@@ -86,21 +76,20 @@ jobs:
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "::error::release ${tag} already exists; bump PKG_RELEASE in versions/${gcc_version}.env"
+            echo "::error::release ${tag} already exists"
             exit 1
           fi
           if [ "${tag_exists}" = false ] && git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
-            echo "::error::tag ${tag} already exists without a release; delete it or bump PKG_RELEASE"
+            echo "::error::tag ${tag} already exists without a release; delete it or pick another version"
             exit 1
           fi
           {
+            echo "version=${version}"
             echo "tag=${tag}"
-            echo "version=$(scripts/env.sh PA_RELEASE_VERSION)"
-            echo "gcc_version=${gcc_version}"
             echo "tag_exists=${tag_exists}"
             echo "skip=false"
           } >> "$GITHUB_OUTPUT"
-          echo "releasing ${tag} from ${GITHUB_SHA}"
+          echo "releasing hermetic-gnat ${tag} from ${GITHUB_SHA}: GCC $(scripts/env.sh --list | tr '\n' ' ')"
 
   build:
     name: Build and verify
@@ -108,7 +97,8 @@ jobs:
     if: needs.resolve.outputs.skip != 'true'
     uses: ./.github/workflows/build.yml
     with:
-      gcc_version: ${{ needs.resolve.outputs.gcc_version }}
+      gcc_versions: all
+      hg_version: ${{ needs.resolve.outputs.version }}
     permissions:
       contents: read
 
@@ -128,18 +118,19 @@ jobs:
           merge-multiple: true
 
       - name: Assemble release
-        env:
-          PA_GCC_VERSION: ${{ needs.resolve.outputs.gcc_version }}
         run: |
           set -euo pipefail
           cd dist
           ls -la
-          # Every platform must be present: a partial release is worse than none.
-          for p in x86_64-linux aarch64-linux x86_64-darwin aarch64-darwin x86_64-windows64; do
-            f="gnat-${p}-${{ needs.resolve.outputs.version }}.tar.gz"
-            [ -f "${f}" ] || { echo "::error::missing ${f}"; exit 1; }
-            [ -f "${f}.sha256" ] || { echo "::error::missing ${f}.sha256"; exit 1; }
-            sha256sum -c "${f}.sha256"
+          # Every GCC version on every platform must be present: a partial
+          # release is worse than none.
+          for gcc in $(../scripts/env.sh --list); do
+            for p in x86_64-linux aarch64-linux x86_64-darwin aarch64-darwin x86_64-windows64; do
+              f="gnat-${p}-${gcc}.tar.gz"
+              [ -f "${f}" ] || { echo "::error::missing ${f}"; exit 1; }
+              [ -f "${f}.sha256" ] || { echo "::error::missing ${f}.sha256"; exit 1; }
+              sha256sum -c "${f}.sha256"
+            done
           done
           cat ./*.tar.gz.sha256 > SHA256SUMS
           cd ..
@@ -149,16 +140,16 @@ jobs:
       # Creates the tag (on the commit that was built, unless it already
       # exists from a tag push) and the release in one call.  GITHUB_TOKEN
       # with contents: write is enough unless an organisation policy caps it
-      # or a tag ruleset / tag protection rule denies it gnat-* tags; then
-      # store a fine-grained PAT (this repository, Contents: read and write)
-      # or a GitHub App token as the RELEASE_TOKEN secret.
+      # or a tag ruleset / tag protection rule denies it; then store a
+      # fine-grained PAT (this repository, Contents: read and write) or a
+      # GitHub App token as the RELEASE_TOKEN secret.
       - name: Publish
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
           tag_name: ${{ needs.resolve.outputs.tag }}
           target_commitish: ${{ needs.resolve.outputs.tag_exists != 'true' && github.sha || '' }}
-          name: GNAT ${{ needs.resolve.outputs.version }}
+          name: hermetic-gnat ${{ needs.resolve.outputs.tag }}
           body_path: notes.md
           make_latest: true
           fail_on_unmatched_files: true

@@ -47,7 +47,7 @@ args=(
     --disable-libgomp
     --disable-libquadmath
     "--with-gmp=${PA_DEPS}" "--with-mpfr=${PA_DEPS}" "--with-mpc=${PA_DEPS}"
-    "--with-pkgversion=hermetic-gnat ${PA_RELEASE_VERSION}"
+    "--with-pkgversion=hermetic-gnat ${PA_HG_VERSION}"
     "--with-bugurl=${repo_url}/issues"
     "--with-stage1-cflags=${GCC_STAGE1_CFLAGS}"
     "--with-boot-cflags=${GCC_BOOT_CFLAGS}"

@@ -95,12 +95,12 @@ cat > share/hermetic-gnat/manifest.json <<EOF
 {
   "name": "${name}",
   "gcc_version": "${GCC_VERSION}",
-  "package_release": "${PKG_RELEASE}",
+  "hermetic_gnat_version": "${PA_HG_VERSION}",
   "platform": "${PA_PLATFORM}",
   "target_triple": "${triple}",
   "build_prefix": "${PA_PREFIX}",
   "source_date_epoch": ${SOURCE_DATE_EPOCH},
-  "portable_ada_commit": "${PA_GIT_SHA:-$(pa_git_sha)}",
+  "hermetic_gnat_commit": "${PA_GIT_SHA:-$(pa_git_sha)}",
   ${floor_json},
   "sources": {
     "gcc": {"url": "${gcc_source_url}", "sha256": "${gcc_source_sha}"},

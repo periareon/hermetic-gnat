@@ -63,9 +63,10 @@ pa_load_versions() {
     . "${dir}/${PA_GCC_VERSION}.env"
     set +a
     [ "${GCC_VERSION}" = "${PA_GCC_VERSION}" ] || pa_die "versions/${PA_GCC_VERSION}.env sets GCC_VERSION=${GCC_VERSION}"
-    PA_RELEASE_VERSION="${GCC_VERSION}-${PKG_RELEASE}"
-    PA_RELEASE_TAG="gnat-${PA_RELEASE_VERSION}"
-    export PA_GCC_VERSION PA_RELEASE_VERSION PA_RELEASE_TAG
+    # Version of hermetic-gnat itself (the recipe).  Set by the release
+    # workflow from its tag; anything else is a development build.
+    PA_HG_VERSION="${PA_HG_VERSION:-dev}"
+    export PA_GCC_VERSION PA_HG_VERSION
 }
 
 # ---------------------------------------------------------------------------
@@ -103,7 +104,7 @@ pa_detect_platform() {
 
 # Name of the release archive (without extension) for the current platform.
 pa_release_name() {
-    printf 'gnat-%s-%s-%s' "${PA_ARCH}" "${PA_OSNAME}" "${PA_RELEASE_VERSION}"
+    printf 'gnat-%s-%s-%s' "${PA_ARCH}" "${PA_OSNAME}" "${GCC_VERSION}"
 }
 
 # ---------------------------------------------------------------------------

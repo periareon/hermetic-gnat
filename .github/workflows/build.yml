@@ -1,5 +1,6 @@
-# Build the GNAT toolchain archives for every platform, then verify each
-# archive on machines that differ from the one it was built on.
+# Build the GNAT toolchain archives for every platform (and, on request,
+# every GCC version), then verify each archive on machines that differ from
+# the one it was built on.
 #
 # Triggered directly (dispatch, PRs and pushes touching the build inputs) and
 # reused by release.yml through workflow_call.  Every third-party action is
@@ -10,8 +11,10 @@ name: Build toolchains
 on:
   workflow_dispatch:
     inputs:
-      gcc_version:
-        description: GCC version to build; one of versions/<gcc>.env (empty = versions/DEFAULT)
+      gcc_versions:
+        description: >-
+          GCC versions to build: space-separated subset of versions/<gcc>.env,
+          or "all" (empty = versions/DEFAULT)
         type: string
         default: ""
       platforms:
@@ -20,12 +23,19 @@ on:
           darwin-aarch64 windows-x86_64 (empty = all)
         type: string
         default: ""
+      hg_version:
+        description: hermetic-gnat version recorded in the archives (empty = dev)
+        type: string
+        default: ""
   workflow_call:
     inputs:
-      gcc_version:
+      gcc_versions:
         type: string
         default: ""
       platforms:
+        type: string
+        default: ""
+      hg_version:
         type: string
         default: ""
   pull_request:
@@ -46,22 +56,21 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.workflow_ref }}-${{ github.ref }}-${{ inputs.gcc_version }}
+  group: build-${{ github.workflow_ref }}-${{ github.ref }}-${{ inputs.gcc_versions }}-${{ inputs.hg_version }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   PA_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
-  # Empty selects versions/DEFAULT.  Every job below inherits this, so the
-  # build scripts and the archive checks all use the same pin file.
-  PA_GCC_VERSION: ${{ inputs.gcc_version }}
+  # Recorded in each archive's manifest and in gcc --version.  Release runs
+  # pass their version; anything else is a development build.
+  PA_HG_VERSION: ${{ inputs.hg_version || 'dev' }}
 
 jobs:
   pins:
-    name: Resolve pins and matrix
+    name: Resolve matrix
     runs-on: ubuntu-24.04
     outputs:
-      version: ${{ steps.env.outputs.PA_RELEASE_VERSION }}
-      tag: ${{ steps.env.outputs.PA_RELEASE_TAG }}
+      versions: ${{ steps.matrix.outputs.versions }}
       linux: ${{ steps.matrix.outputs.linux }}
       darwin: ${{ steps.matrix.outputs.darwin }}
       windows: ${{ steps.matrix.outputs.windows }}
@@ -69,18 +78,15 @@ jobs:
       test_container: ${{ steps.matrix.outputs.test_container }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - id: env
-        run: scripts/env.sh --github >> "$GITHUB_OUTPUT"
       - id: matrix
-        run: scripts/ci/matrix.sh "${{ inputs.platforms }}" >> "$GITHUB_OUTPUT"
+        run: scripts/ci/matrix.sh "${{ inputs.platforms }}" "${{ inputs.gcc_versions }}" >> "$GITHUB_OUTPUT"
       - run: |
-          echo "GCC ${{ steps.env.outputs.GCC_VERSION }} release ${{ steps.env.outputs.PKG_RELEASE }} -> ${{ steps.env.outputs.PA_RELEASE_TAG }}"
-          echo "available versions: $(scripts/env.sh --list | tr '\n' ' ')"
+          echo "hermetic-gnat ${PA_HG_VERSION}; building GCC ${{ steps.matrix.outputs.versions }} (available: $(scripts/env.sh --list | tr '\n' ' '))"
           cat "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
   linux:
-    name: Build linux-${{ matrix.arch }}
+    name: Build linux-${{ matrix.arch }} GCC ${{ matrix.gcc }}
     needs: pins
     if: needs.pins.outputs.linux != '[]'
     strategy:
@@ -89,6 +95,8 @@ jobs:
         include: ${{ fromJSON(needs.pins.outputs.linux) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 350
+    env:
+      PA_GCC_VERSION: ${{ matrix.gcc }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -105,7 +113,7 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: gnat-${{ matrix.arch }}-linux
+          name: ${{ matrix.artifact }}
           path: ${{ runner.temp }}/pa/out/*
           if-no-files-found: error
           compression-level: 0
@@ -113,7 +121,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   darwin:
-    name: Build darwin-${{ matrix.arch }}
+    name: Build darwin-${{ matrix.arch }} GCC ${{ matrix.gcc }}
     needs: pins
     if: needs.pins.outputs.darwin != '[]'
     strategy:
@@ -122,6 +130,8 @@ jobs:
         include: ${{ fromJSON(needs.pins.outputs.darwin) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 350
+    env:
+      PA_GCC_VERSION: ${{ matrix.gcc }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -140,7 +150,7 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: gnat-${{ matrix.arch }}-darwin
+          name: ${{ matrix.artifact }}
           path: ${{ runner.temp }}/pa/out/*
           if-no-files-found: error
           compression-level: 0
@@ -148,7 +158,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   windows:
-    name: Build windows-${{ matrix.arch }}
+    name: Build windows-${{ matrix.arch }} GCC ${{ matrix.gcc }}
     needs: pins
     if: needs.pins.outputs.windows != '[]'
     strategy:
@@ -162,6 +172,7 @@ jobs:
         shell: msys2 {0}
     env:
       CONFIG_SHELL: /bin/bash
+      PA_GCC_VERSION: ${{ matrix.gcc }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -200,7 +211,7 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: gnat-${{ matrix.arch }}-windows
+          name: ${{ matrix.artifact }}
           path: C:/pa/out/*
           if-no-files-found: error
           compression-level: 0
@@ -211,7 +222,7 @@ jobs:
   # that is not the build machine and checked with scripts/check.sh.
   # ---------------------------------------------------------------------------
   test-native:
-    name: Test ${{ matrix.platform }} on ${{ matrix.label }}
+    name: Test ${{ matrix.artifact }} on ${{ matrix.label }}
     needs: [pins, linux, darwin, windows]
     if: >-
       !cancelled()
@@ -242,7 +253,7 @@ jobs:
         run: scripts/ci/test-archive.sh dist/gnat-*.tar.gz
 
   test-container:
-    name: Test ${{ matrix.platform }} in ${{ matrix.label }}
+    name: Test ${{ matrix.artifact }} in ${{ matrix.label }}
     needs: [pins, linux]
     if: >-
       !cancelled()

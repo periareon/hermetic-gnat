@@ -17,7 +17,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${here}/lib/common.sh"
 pa_init
 
-pa_log "platform ${PA_PLATFORM}, GCC ${GCC_VERSION} release ${PKG_RELEASE}, ${PA_JOBS} jobs"
+pa_log "platform ${PA_PLATFORM}, GCC ${GCC_VERSION}, hermetic-gnat ${PA_HG_VERSION}, ${PA_JOBS} jobs"
 pa_log "work dir ${PA_WORK}"
 
 case "${PA_OS}" in

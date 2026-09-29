@@ -17,12 +17,11 @@ name="$(basename "${archive}" .tar.gz)"
 
 # The archive name carries the GCC version: check against that version's pins.
 case "${name}" in
-    gnat-*-*-[0-9]*.[0-9]*.[0-9]*-[0-9]*)
-        ver="${name#gnat-*-*-}"           # <gcc>-<release>
-        PA_GCC_VERSION="${ver%-*}"
+    gnat-*-*-[0-9]*.[0-9]*.[0-9]*)
+        PA_GCC_VERSION="${name#gnat-*-*-}"
         export PA_GCC_VERSION
         ;;
-    *) pa_die "unexpected archive name: ${name} (want gnat-<arch>-<os>-<gcc>-<release>.tar.gz)" ;;
+    *) pa_die "unexpected archive name: ${name} (want gnat-<arch>-<os>-<gcc>.tar.gz)" ;;
 esac
 pa_log "GCC version from archive name: ${PA_GCC_VERSION}"
 
