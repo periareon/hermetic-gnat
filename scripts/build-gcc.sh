@@ -26,7 +26,7 @@ fi
 pa_log "bootstrap compiler in use: $(command -v gcc) ($(gcc -dumpversion))"
 command -v gnatmake >/dev/null || pa_die "gnatmake not found; run fetch-bootstrap.sh first"
 
-repo_url="${PA_REPO_URL:-https://github.com/${GITHUB_REPOSITORY:-periareon/portable-ada}}"
+repo_url="${PA_REPO_URL:-https://github.com/${GITHUB_REPOSITORY:-periareon/hermetic-gnat}}"
 
 args=(
     "--prefix=${PA_PREFIX}"
@@ -47,7 +47,7 @@ args=(
     --disable-libgomp
     --disable-libquadmath
     "--with-gmp=${PA_DEPS}" "--with-mpfr=${PA_DEPS}" "--with-mpc=${PA_DEPS}"
-    "--with-pkgversion=portable-ada ${PA_RELEASE_VERSION}"
+    "--with-pkgversion=hermetic-gnat ${PA_RELEASE_VERSION}"
     "--with-bugurl=${repo_url}/issues"
     "--with-stage1-cflags=${GCC_STAGE1_CFLAGS}"
     "--with-boot-cflags=${GCC_BOOT_CFLAGS}"

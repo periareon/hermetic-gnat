@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Shared helpers for the portable-ada build scripts.  Source, do not execute.
+# Shared helpers for the hermetic-gnat build scripts.  Source, do not execute.
 #
 # Every script that sources this gets:
 #   PA_ROOT       repository root
@@ -21,9 +21,9 @@
 
 set -euo pipefail
 
-pa_log()  { printf '\033[1;34m[portable-ada]\033[0m %s\n' "$*" >&2; }
-pa_warn() { printf '\033[1;33m[portable-ada] warning:\033[0m %s\n' "$*" >&2; }
-pa_die()  { printf '\033[1;31m[portable-ada] error:\033[0m %s\n' "$*" >&2; exit 1; }
+pa_log()  { printf '\033[1;34m[hermetic-gnat]\033[0m %s\n' "$*" >&2; }
+pa_warn() { printf '\033[1;33m[hermetic-gnat] warning:\033[0m %s\n' "$*" >&2; }
+pa_die()  { printf '\033[1;31m[hermetic-gnat] error:\033[0m %s\n' "$*" >&2; exit 1; }
 
 # Print the command, then run it.
 pa_run() { printf '+ %s\n' "$*" >&2; "$@"; }

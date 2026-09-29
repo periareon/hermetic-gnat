@@ -4,5 +4,5 @@ with Ada.Text_IO; use Ada.Text_IO;
 with Greeter;
 procedure Hello is
 begin
-   Put_Line (Greeter.Greeting ("portable-ada"));
+   Put_Line (Greeter.Greeting ("hermetic-gnat"));
 end Hello;

@@ -10,7 +10,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 pa_load_versions
 
 dist="$1"; tag="$2"
-repo="${GITHUB_REPOSITORY:-OWNER/portable-ada}"
+repo="${GITHUB_REPOSITORY:-OWNER/hermetic-gnat}"
 server="${GITHUB_SERVER_URL:-https://github.com}"
 
 cat <<EOF
@@ -49,7 +49,7 @@ $(python3 "${here}/../../tools/rules_ada_versions.py" --repo "${repo}" --server 
 * static \`libgnat.a\` / \`libgnarl.a\`, \`adainclude\`, \`libgcc.a\`, \`libstdc++\`, \`libatomic\`
 * Linux/Windows: GNU binutils ${BINUTILS_VERSION}, also copied into \`libexec/gcc/<triple>/<version>/\` so the driver never needs \`PATH\`
 * Windows: mingw-w64 ${MINGW_VERSION} headers and CRT (msvcrt, win32 threads)
-* \`share/portable-ada/manifest.json\`: every source URL, checksum and configure flag used
+* \`share/hermetic-gnat/manifest.json\`: every source URL, checksum and configure flag used
 * \`share/licenses/\`: license texts of everything included
 
 ### Pinned sources

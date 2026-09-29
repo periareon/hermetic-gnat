@@ -80,9 +80,9 @@ add_licenses isl      "${PA_SRC}/isl-${ISL_VERSION}"   LICENSE
 add_licenses binutils "${PA_SRC}/binutils-${BINUTILS_VERSION}" COPYING COPYING3 COPYING.LIB COPYING3.LIB
 add_licenses mingw-w64 "${PA_SRC}/mingw-w64-v${MINGW_VERSION}" COPYING COPYING.MinGW-w64-runtime
 mkdir -p share/licenses
-cp "${PA_ROOT}/LICENSE" share/licenses/portable-ada.LICENSE
+cp "${PA_ROOT}/LICENSE" share/licenses/hermetic-gnat.LICENSE
 
-mkdir -p share/portable-ada
+mkdir -p share/hermetic-gnat
 configure_args_json="$(python3 -c 'import json,sys; print(json.dumps([l.rstrip("\n") for l in open(sys.argv[1]) if l.strip()]))' "${PA_WORK}/gcc-configure-args.txt")"
 gcc_source_url="${GCC_URL}"; gcc_source_sha="${GCC_SHA256}"
 if [ "${PA_OS}" = darwin ]; then gcc_source_url="${GCC_DARWIN_URL}"; gcc_source_sha="${GCC_DARWIN_SHA256}"; fi
@@ -91,7 +91,7 @@ case "${PA_OS}" in
     darwin) floor_json="\"macos_deployment_target\": \"${MACOS_DEPLOYMENT_TARGET}\"" ;;
     *)      floor_json="\"windows_min_version\": \"${MINGW_WINNT}\", \"msvcrt\": \"msvcrt\"" ;;
 esac
-cat > share/portable-ada/manifest.json <<EOF
+cat > share/hermetic-gnat/manifest.json <<EOF
 {
   "name": "${name}",
   "gcc_version": "${GCC_VERSION}",
@@ -114,7 +114,7 @@ cat > share/portable-ada/manifest.json <<EOF
   "configure_args": ${configure_args_json}
 }
 EOF
-python3 -c 'import json,sys; json.load(open(sys.argv[1]))' share/portable-ada/manifest.json
+python3 -c 'import json,sys; json.load(open(sys.argv[1]))' share/hermetic-gnat/manifest.json
 
 # --- 5. macOS code signatures --------------------------------------------------
 if [ "${PA_OS}" = darwin ]; then
@@ -138,6 +138,6 @@ mkdir -p "${PA_OUT}"
 out="${PA_OUT}/${name}.tar.gz"
 python3 "${here}/mktar.py" --output "${out}" --root-name "${name}" --mtime "${SOURCE_DATE_EPOCH}" "${PA_PREFIX}"
 (cd "${PA_OUT}" && printf '%s  %s\n' "$(pa_sha256 "${name}.tar.gz")" "${name}.tar.gz" > "${name}.tar.gz.sha256")
-cp share/portable-ada/manifest.json "${PA_OUT}/${name}.manifest.json"
+cp share/hermetic-gnat/manifest.json "${PA_OUT}/${name}.manifest.json"
 pa_log "wrote ${out} ($(du -h "${out}" | cut -f1))"
 cat "${PA_OUT}/${name}.tar.gz.sha256" >&2
