@@ -4,59 +4,66 @@ Relocatable, self-contained GNAT (GCC with the Ada front end) toolchains,
 built and verified by GitHub Actions, for use with
 [rules_ada](https://github.com/periareon/rules_ada).
 
-Every release ships one archive per platform. An archive can be extracted
-anywhere, needs nothing from the machine beyond the C library (and Xcode's
-linker on macOS), and is what `rules_ada` downloads as a toolchain.
+A release of this repository is a build of its recipe: it contains one
+archive per platform for every supported GCC version, all produced by the
+same scripts at the same commit. An archive can be extracted anywhere,
+needs nothing from the machine beyond the C library (and Xcode's linker on
+macOS), and is what `rules_ada` downloads as a toolchain.
 
 | Platform | Archive | Runs on | Built on |
 |---|---|---|---|
-| Linux x86_64 | `gnat-x86_64-linux-<ver>.tar.gz` | any glibc ≥ 2.28 distro (RHEL 8, Debian 10, Ubuntu 18.10 and newer) | Debian 10 container on `ubuntu-24.04` |
-| Linux arm64 | `gnat-aarch64-linux-<ver>.tar.gz` | same | Debian 10 container on `ubuntu-24.04-arm` |
-| macOS x86_64 | `gnat-x86_64-darwin-<ver>.tar.gz` | macOS 11.0+ with Xcode or Command Line Tools | `macos-15-intel` |
-| macOS arm64 | `gnat-aarch64-darwin-<ver>.tar.gz` | macOS 11.0+ with Xcode or Command Line Tools | `macos-15` |
-| Windows x86_64 | `gnat-x86_64-windows64-<ver>.tar.gz` | Windows 7+ x64; Windows 11 on ARM through x64 emulation | `windows-2025` + msys2 |
+| Linux x86_64 | `gnat-x86_64-linux-<gcc>.tar.gz` | any glibc ≥ 2.28 distro (RHEL 8, Debian 10, Ubuntu 18.10 and newer) | Debian 10 container on `ubuntu-24.04` |
+| Linux arm64 | `gnat-aarch64-linux-<gcc>.tar.gz` | same | Debian 10 container on `ubuntu-24.04-arm` |
+| macOS x86_64 | `gnat-x86_64-darwin-<gcc>.tar.gz` | macOS 11.0+ with Xcode or Command Line Tools | `macos-15-intel` |
+| macOS arm64 | `gnat-aarch64-darwin-<gcc>.tar.gz` | macOS 11.0+ with Xcode or Command Line Tools | `macos-15` |
+| Windows x86_64 | `gnat-x86_64-windows64-<gcc>.tar.gz` | Windows 7+ x64; Windows 11 on ARM through x64 emulation | `windows-2025` + msys2 |
 | Windows arm64 | not possible today, see [Windows on ARM](#windows-on-arm) | | |
 
-`<ver>` is `<gcc version>-<package release>`, for example `16.1.0-1`. Names,
-tags and `.sha256` sidecars follow the GNAT-FSF-builds convention that
-`rules_ada` already parses.
+`<gcc>` is the GCC version, for example `16.1.0`. The release tag (`v1.2.0`)
+identifies the recipe that built the archive. Asset and directory names
+otherwise follow the GNAT-FSF-builds convention that `rules_ada` parses.
 
-## GCC versions
+## Versions
 
-Several GCC versions are maintained side by side on `main`. Everything
-specific to one version (source checksums, the Darwin branch tag, the
-bootstrap archives, the package release number) lives in
-`versions/<gcc>.env`; everything that is a property of the recipe rather
-than of the version (prerequisite libraries, the build container, the glibc,
-macOS and Windows floors) lives in [versions/common.env](versions/common.env).
-[versions/DEFAULT](versions/DEFAULT) names the version built when none is
-selected.
+Two things are versioned, deliberately separately:
 
-| File | Selects |
-|---|---|
-| `versions/16.1.0.env` | GCC 16.1.0 (default) |
-| `versions/15.3.0.env` | GCC 15.3.0 |
+* **GCC versions** live in [versions/](versions/): one `versions/<gcc>.env`
+  per supported GCC (source checksums, Darwin branch tag, bootstrap
+  archives), shared recipe pins in [versions/common.env](versions/common.env)
+  (prerequisite libraries, the build container, the glibc, macOS and
+  Windows floors), and [versions/DEFAULT](versions/DEFAULT) naming the one
+  built when none is selected.
 
-The version is chosen by `PA_GCC_VERSION` locally, by the `gcc_version`
-input of a manual build, and by the tag at release time: `gnat-15.3.0-1`
-builds from `versions/15.3.0.env`.
+  | File | GCC |
+  |---|---|
+  | `versions/16.1.0.env` | 16.1.0 (default) |
+  | `versions/15.3.0.env` | 15.3.0 |
 
-The package release number is what makes this arrangement maintainable.
-When the recipe improves (a hermeticity fix, a new floor), the change is in
-the shared scripts and applies to every version. To republish, bump
-`PKG_RELEASE` in each version file and push one tag per version:
-`16.1.0-2` and `15.3.0-2` are the same GCC sources built by the newer
-recipe. Earlier releases stay available and stay pinned by their full
-`<gcc>-<release>` in `rules_ada`, so nothing breaks retroactively.
+* **hermetic-gnat versions** are the release tags, `vMAJOR.MINOR.PATCH`.
+  Every release builds every GCC version above. When the recipe changes (a
+  hermeticity fix, a new floor, a new prerequisite), that is one new
+  release, and all GCC versions get it at once. Adding or removing a GCC
+  version is likewise just a release whose notes list what it contains.
 
-To add a version, copy the closest `versions/<gcc>.env`, update
+`rules_ada` tracks one hermetic-gnat release at a time. Its `versions.bzl`
+is generated from that release, keyed by GCC version (`"16.1.0"`,
+`"15.3.0"`), and records the release it came from. Moving `rules_ada` to a
+new toolchain generation is one commit that changes every version
+consistently, and a user's `--@rules_ada//ada/settings:version=16.1.0`
+keeps working across it.
+
+Locally and in manual builds the GCC version is selected by
+`PA_GCC_VERSION` or the `gcc_versions` workflow input; PRs build only the
+default version, releases build all of them.
+
+To add a GCC version, copy the closest `versions/<gcc>.env`, update
 `GCC_VERSION`, the FSF tarball checksum, the `iains/gcc-<major>-branch`
 tag and checksum, and the bootstrap archives of the same major from
-GNAT-FSF-builds, then run a manual build with that `gcc_version`.
+GNAT-FSF-builds, then run a manual build with that version.
 
 ## Why a separate build
 
-`rules_ada` currently consumes [alire-project/GNAT-FSF-builds](https://github.com/alire-project/GNAT-FSF-builds).
+`rules_ada` originally consumed [alire-project/GNAT-FSF-builds](https://github.com/alire-project/GNAT-FSF-builds).
 Those builds are excellent, and the recipe here is derived from theirs, but
 they are built on current GitHub runner images without a compatibility
 floor. Their Linux executables require glibc 2.35 and a system `libzstd`,
@@ -75,7 +82,7 @@ minimum. This repository builds the same GCC sources with three goals:
 3. **Verified before publishing.** Each archive is extracted on a machine
    other than the one that built it, compiled against, run, and inspected
    ([scripts/check.sh](scripts/check.sh)). A release is only created if every
-   platform passes.
+   archive of every GCC version passes.
 
 ## Guarantees and how they are enforced
 
@@ -90,7 +97,7 @@ minimum. This repository builds the same GCC sources with three goals:
 | Working compiler and runtime | seven programs under [test/](test/) covering separate compilation, tasking, exceptions, containers, Ada 2022, numerics and C interop are built twice (the `rules_ada` way and with `gnatmake`) and their output compared |
 | Reproducible archive bytes | `mktar.py` writes sorted entries, `SOURCE_DATE_EPOCH` timestamps, root ownership and normalised modes; GCC's 3-stage bootstrap compares stage 2 and 3 |
 | Bootstrap compiler leaves no trace | native builds use the standard 3-stage bootstrap, so the installed compiler was compiled by itself |
-| Provenance | `share/hermetic-gnat/manifest.json` inside every archive lists every source URL, checksum and configure flag |
+| Provenance | `share/hermetic-gnat/manifest.json` inside every archive lists the hermetic-gnat version and commit, every source URL, checksum and configure flag |
 
 Things that are deliberately *not* hermetic, because a native toolchain
 cannot be: the target C library and its headers (glibc, the macOS SDK), and
@@ -99,12 +106,11 @@ CRT are bundled, so nothing at all is required there.
 
 ## Using with rules_ada
 
-Each release's notes contain a ready-to-paste `GNAT_VERSIONS` entry
-(generated by [tools/rules_ada_versions.py](tools/rules_ada_versions.py)).
-Either add it to `ada/private/versions.bzl` by hand, or change the
-repository name in `rules_ada`'s `tools/update_versions/update_versions.py`
-from `alire-project/GNAT-FSF-builds` to this repository: the tag pattern,
-asset names and `.sha256` sidecars are compatible.
+`rules_ada`'s `tools/update_versions` reads the newest hermetic-gnat release
+(or one named with `--release vX.Y.Z`) and regenerates
+`ada/private/versions.bzl`; each release's notes also contain that content
+ready to paste (generated by
+[tools/rules_ada_versions.py](tools/rules_ada_versions.py)).
 
 Two things worth knowing when wiring these archives into Bazel rules:
 
@@ -112,7 +118,8 @@ Two things worth knowing when wiring these archives into Bazel rules:
   `libgnat.a` on the link line (tasking code pulls symbols from libgnat);
   `gnatlink` uses `-lgnarl -lgnat`. `check.sh` links in that order. On
   systems with glibc older than 2.34, `-lpthread -lrt -ldl` must also be
-  passed explicitly when the binder's option list is not used.
+  passed explicitly when the binder's option list is not used, and `-lm`
+  is needed for `Ada.Numerics`.
 * **Windows on ARM.** There is no native archive. Register the
   `windows-x86_64` archive for an exec platform of `@platforms//os:windows`
   + `@platforms//cpu:aarch64`; Windows 11 runs it under x64 emulation. CI
@@ -140,7 +147,7 @@ the x86_64 archive under Windows' built-in x64 emulation, which the
 ```
 versions/
   common.env                  pins shared by all GCC versions (prereqs, container, floors)
-  <gcc>.env                   per-version pins: GCC sources, Darwin branch, bootstrap, PKG_RELEASE
+  <gcc>.env                   per-version pins: GCC sources, Darwin branch, bootstrap
   DEFAULT                     version used when none is selected
 scripts/
   build-all.sh                orchestrates the stages below for the current OS
@@ -156,14 +163,14 @@ scripts/
   linux/docker-build.sh       runs the Linux build in the pinned container
   linux/container-entry.sh    what runs inside that container
   darwin/ld-wrapper.sh        prefers ld-classic when Xcode provides it
-  ci/matrix.sh                job matrices for the workflows
+  ci/matrix.sh                job matrices (platforms x GCC versions) for the workflows
   ci/test-archive.sh          extract an archive to a temp dir and run check.sh
-  ci/release-notes.sh         release notes with the rules_ada fragment
-  env.sh                      prints the pins of one version (used by workflows)
+  ci/release-notes.sh         release notes with the rules_ada versions.bzl content
+  env.sh                      prints the pins of one GCC version (used by workflows)
 test/<name>/                  Ada/C programs and expected output used by check.sh
-tools/rules_ada_versions.py   GNAT_VERSIONS entry generator
+tools/rules_ada_versions.py   versions.bzl generator for a set of archives
 .github/workflows/build.yml   build + cross-machine verification
-.github/workflows/release.yml tag -> build -> verify -> GitHub release
+.github/workflows/release.yml version -> build all -> verify -> GitHub release
 ```
 
 ## Building locally
@@ -171,7 +178,8 @@ tools/rules_ada_versions.py   GNAT_VERSIONS entry generator
 Linux (any distro with Docker; produces the same bytes as CI):
 
 ```sh
-scripts/linux/docker-build.sh                 # native arch
+scripts/linux/docker-build.sh                 # native arch, default GCC
+PA_GCC_VERSION=15.3.0 scripts/linux/docker-build.sh
 PA_DOCKER_PLATFORM=linux/arm64 scripts/linux/docker-build.sh   # via qemu, slow
 ```
 
@@ -190,41 +198,50 @@ PA_WORK=/pa/work PA_OUT=/pa/out scripts/build-all.sh
 ```
 
 Useful variables: `PA_GCC_VERSION` (which `versions/<gcc>.env` to build,
-default `versions/DEFAULT`), `PA_WORK` (scratch dir, default `./work`),
-`PA_OUT` (archives), `PA_JOBS`, `PA_STAGES="gcc package check"` to rerun a
-subset, `PA_SKIP_CHECK=1`. Downloads are cached in `$PA_WORK/downloads`.
+default `versions/DEFAULT`), `PA_HG_VERSION` (recorded in the manifest and
+`gcc --version`; `dev` unless set by a release), `PA_WORK` (scratch dir,
+default `./work`), `PA_OUT` (archives), `PA_JOBS`,
+`PA_STAGES="gcc package check"` to rerun a subset, `PA_SKIP_CHECK=1`.
+Downloads are cached in `$PA_WORK/downloads`.
 
-To verify any archive, including one from a release (the version is read
-from the archive name):
+To verify any archive, including one from a release (the GCC version is
+read from the archive name):
 
 ```sh
-scripts/ci/test-archive.sh gnat-x86_64-linux-16.1.0-1.tar.gz
+scripts/ci/test-archive.sh gnat-x86_64-linux-16.1.0.tar.gz
 ```
 
 ## Releasing
 
-1. Edit the relevant `versions/<gcc>.env`: a new version gets a new file
-   (see [GCC versions](#gcc-versions)); a rebuild of existing sources with
-   the current recipe only bumps `PKG_RELEASE`. Open a PR; the build
-   workflow runs the default version on it, and a manual run with
-   `gcc_version` covers any other.
-2. Run the **Release** workflow from the Actions tab and pick the GCC
-   version. It builds and verifies all five platforms first, and only then
-   creates the tag `gnat-<gcc>-<PKG_RELEASE>` on that commit together with
-   the GitHub release (archives, `.sha256` sidecars, `SHA256SUMS`, manifests,
-   and notes containing the `rules_ada` entry). A failed build leaves
-   nothing behind. Pushing the tag by hand works too and triggers the same
-   workflow; either way it refuses a tag or release that already exists, or
-   a tag that does not match the pin file's `PKG_RELEASE`.
+1. Merge whatever should go out: recipe changes in `scripts/` or
+   `versions/common.env`, new or removed `versions/<gcc>.env` files. PRs
+   build and verify the default GCC version; a manual run of the build
+   workflow with `gcc_versions: all` covers the rest before releasing.
+2. Run the **Release** workflow from the Actions tab and enter the version
+   (`1.2.0`). It builds every GCC version on every platform, verifies each
+   archive on other machines, and only then creates the tag `v1.2.0` on
+   that commit together with the GitHub release: archives, `.sha256`
+   sidecars, `SHA256SUMS`, manifests, and notes containing the `rules_ada`
+   `versions.bzl` content. A failed build leaves nothing behind. Pushing the
+   tag by hand triggers the same workflow; either way an existing tag or
+   release is refused.
+3. In `rules_ada`, `bazel run //tools/update_versions`, then buildifier,
+   commit.
 
-After a recipe change that should reach every version, repeat step 1 and 2
-once per version. Manual dispatch of the build workflow accepts
-`gcc_version` and `platforms` inputs to build a subset without releasing.
+The release is published with the workflow's own `GITHUB_TOKEN`
+(`contents: write`). If that token is refused (`HTTP 403: Resource not
+accessible by integration`), an organisation policy caps the token or a tag
+ruleset / tag protection rule denies it the right to create tags. Either
+relax that rule for the GitHub Actions app, or store a token that is allowed
+to create tags as the repository secret `RELEASE_TOKEN`: a fine-grained
+personal access token limited to this repository with *Contents: read and
+write*, or a GitHub App installation token. The release itself is created by
+`softprops/action-gh-release`, pinned by commit like every other action.
 
 ## Archive layout
 
 ```
-gnat-<arch>-<os>-<ver>/
+gnat-<arch>-<os>-<gcc>/
   bin/                gcc, gnatbind, gnatmake, gnatlink, ar, as, ld, gcov, ...
   lib/gcc/<triple>/<gcc>/
      adainclude/      Ada runtime sources

@@ -35,6 +35,7 @@ exec docker "${docker_args[@]}" \
     -v "${PA_ROOT}:/src:ro" \
     -v "${PA_WORK}:/work" \
     -e "PA_GCC_VERSION=${PA_GCC_VERSION}" \
+    -e "PA_HG_VERSION=${PA_HG_VERSION}" \
     -e "PA_JOBS=${PA_JOBS:-$(pa_nproc)}" \
     -e "PA_STAGES=${PA_STAGES:-}" \
     -e "PA_SKIP_CHECK=${PA_SKIP_CHECK:-}" \

@@ -31,8 +31,8 @@ case "${1:-}" in
     ""|--github)
         for k in $(keys); do printf '%s=%s\n' "$k" "${!k}"; done
         printf 'PA_GCC_VERSION=%s\n' "${PA_GCC_VERSION}"
-        printf 'PA_RELEASE_VERSION=%s\n' "${PA_RELEASE_VERSION}"
-        printf 'PA_RELEASE_TAG=%s\n' "${PA_RELEASE_TAG}"
+        printf 'PA_HG_VERSION=%s\n' "${PA_HG_VERSION}"
+        printf 'PA_ARCHIVE_NAME_PATTERN=gnat-<arch>-<os>-%s\n' "${GCC_VERSION}"
         ;;
     *)
         [ -n "${!1:-}" ] || pa_die "unknown key: $1"
