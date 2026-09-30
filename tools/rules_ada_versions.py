@@ -7,7 +7,7 @@ Reads the ``*.tar.gz.sha256`` sidecars produced by scripts/package.sh (or a
 by GCC version, plus the hermetic-gnat release it came from.  rules_ada's
 own ``tools/update_versions`` produces the same from the GitHub release.
 
-    tools/rules_ada_versions.py --repo periareon/hermetic-gnat --tag v1.0.0 dist/
+    tools/rules_ada_versions.py --repo periareon/hermetic-gnat --tag 2026.09.30 dist/
 
 Asset names: gnat-<arch>-<linux|darwin|windows64>-<gcc>.tar.gz
 """
@@ -56,7 +56,7 @@ def read_sums(directory):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", required=True, help="GitHub owner/name hosting the releases")
-    ap.add_argument("--tag", required=True, help="hermetic-gnat release tag, e.g. v1.0.0")
+    ap.add_argument("--tag", required=True, help="hermetic-gnat release tag, e.g. 2026.09.30")
     ap.add_argument("--server", default="https://github.com")
     ap.add_argument("directory", type=pathlib.Path, help="directory with the .sha256 sidecars")
     args = ap.parse_args()
