@@ -179,7 +179,7 @@ jobs:
       # msys2 only supplies the POSIX build environment (bash, make, bison,
       # python for the archive writer).  The compiler used is the pinned
       # bootstrap GNAT; no msys2 mingw-w64 toolchain is installed.
-      - uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
         with:
           msystem: MINGW64
           update: false
