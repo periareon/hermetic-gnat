@@ -111,7 +111,7 @@ jobs:
           PA_WORK: ${{ runner.temp }}/pa
         run: scripts/linux/docker-build.sh
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ${{ matrix.artifact }}
           path: ${{ runner.temp }}/pa/out/*
@@ -148,7 +148,7 @@ jobs:
           PA_WORK: ${{ runner.temp }}/pa
         run: scripts/build-all.sh
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ${{ matrix.artifact }}
           path: ${{ runner.temp }}/pa/out/*
@@ -179,7 +179,7 @@ jobs:
       # msys2 only supplies the POSIX build environment (bash, make, bison,
       # python for the archive writer).  The compiler used is the pinned
       # bootstrap GNAT; no msys2 mingw-w64 toolchain is installed.
-      - uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
         with:
           msystem: MINGW64
           update: false
@@ -209,7 +209,7 @@ jobs:
           export PA_WORK=/pa/work PA_OUT=/pa/out
           bash "$(cygpath -u "$GITHUB_WORKSPACE")/scripts/build-all.sh"
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ${{ matrix.artifact }}
           path: C:/pa/out/*
@@ -239,7 +239,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: ${{ matrix.artifact }}
           path: dist
@@ -271,7 +271,7 @@ jobs:
       - name: Install libc development files
         run: ${{ matrix.setup }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: ${{ matrix.artifact }}
           path: dist
